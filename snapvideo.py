@@ -1,7 +1,11 @@
 import imageio
 imageio.plugins.ffmpeg.download()
 from moviepy.editor import *
+from multiprocessing import Process, Semaphore
 import os
+import sys
+
+pool_sema = Semaphore(6)
 
 #############################
 # Check if file is video file.
@@ -42,32 +46,52 @@ def is_VideoFile(filename):
 
     return False
 
+def write_videofile(filename, clip_start, clip_end, num):
+    try:
+        video = VideoFileClip("./resources/videos/origin/" + filename).subclip(clip_start, clip_end)
+
+        txt_clip = ( TextClip("snapjerk.com",fontsize=30,color='yellow')
+                .set_position(('right', 'bottom'))
+                .margin( bottom=20, right=20, opacity=0)
+                .set_duration(clip_end - clip_start) )
+
+        image_clip = ( ImageClip("./resources/images/logo.jpg")
+                    .set_position(('right', 'top'))
+                    .resize(0.1)
+                    .set_duration(clip_end - clip_start))
+        result = CompositeVideoClip([video, txt_clip, image_clip])
+        filename, file_extension = os.path.splitext(filename)
+        result.write_videofile("./resources/videos/result/" + filename + "_split_" + str(num) + file_extension, fps=25, threads=1)
+    except IOError as e:
+        print(e.strerror)
+    finally:
+        pool_sema.release()
+
 
 
 def process_videos():
     for root, dirs, files in os.walk("./resources/videos/origin"):
-        for item in files:
-            if not is_VideoFile(item):
+        for filename in files:
+            if not is_VideoFile(filename):
                 continue
 
-            filename, file_extension = os.path.splitext(item)
-            video = VideoFileClip("./resources/videos/origin/" + item)
+            video = VideoFileClip("./resources/videos/origin/" + filename)
             duration = video.duration
             if duration < 480 or duration > 720:
                 continue
 
-            txt_clip = ( TextClip("snapjerk.com",fontsize=30,color='yellow')
-                .set_position(('right', 'bottom'))
-                .margin( bottom=20, right=20, opacity=0)
-                .set_duration(10) )
+            clip_start = 0
+            num = 1
 
-            image_clip = ( ImageClip("./resources/images/logo.jpg")
-                        .set_position(('right', 'top'))
-                        .resize(0.1)
-                        .set_duration(10))
+            while clip_start < duration:
+                clip_end = clip_start + 180
+                if clip_end > duration:
+                        clip_end = duration
+                pool_sema.acquire()
+                p = Process(target=write_videofile, args=(filename, clip_start, clip_end, num)).start()
+                clip_start = clip_end
+                num += 1
 
-            result = CompositeVideoClip([video, txt_clip, image_clip])
-            result.write_videofile("./resources/videos/result/video1_result_1.mp4",fps=25)
 
 def main():
     process_videos()
