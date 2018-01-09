@@ -4,8 +4,10 @@ from moviepy.editor import *
 from multiprocessing import Process, Semaphore
 import os
 import sys
+import threading
 
 pool_sema = Semaphore(6)
+processes = []
 
 #############################
 # Check if file is video file.
@@ -46,9 +48,10 @@ def is_VideoFile(filename):
 
     return False
 
+
 def write_videofile(filename, clip_start, clip_end, num):
     try:
-        video = VideoFileClip("./resources/videos/origin/" + filename).subclip(clip_start, clip_end)
+        video = VideoFileClip("./resources/videos/origin/" + filename).subclip(clip_start, clip_end).resize((640, 360))
 
         txt_clip = ( TextClip("snapjerk.com",fontsize=30,color='yellow')
                 .set_position(('right', 'bottom'))
@@ -68,8 +71,17 @@ def write_videofile(filename, clip_start, clip_end, num):
         pool_sema.release()
 
 
+def is_alive_anyProcess():
+    for process in processes:
+        if process.is_alive():
+            return True
+
+    return False
+
 
 def process_videos():
+    global processes
+    processes = []
     for root, dirs, files in os.walk("./resources/videos/origin"):
         for filename in files:
             if not is_VideoFile(filename):
@@ -86,11 +98,18 @@ def process_videos():
             while clip_start < duration:
                 clip_end = clip_start + 180
                 if clip_end > duration:
-                        clip_end = duration
+                    clip_end = duration
                 pool_sema.acquire()
-                p = Process(target=write_videofile, args=(filename, clip_start, clip_end, num)).start()
+                p = Process(target=write_videofile, args=(filename, clip_start, clip_end, num))
+                p.start()
+                processes.append(p)
                 clip_start = clip_end
                 num += 1
+
+            index = 0
+            while is_alive_anyProcess():
+                index = (index + 1) % 2
+            os.remove("./resources/videos/origin/" + filename)
 
 
 def main():
