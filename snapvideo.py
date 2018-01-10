@@ -3,11 +3,16 @@ imageio.plugins.ffmpeg.download()
 from moviepy.editor import *
 from multiprocessing import Process, Semaphore
 import os
+from os import listdir
+from os.path import isfile, join
 import sys
 import threading
+import random
+import shutil
 
 pool_sema = Semaphore(6)
 processes = []
+index = 0
 
 #############################
 # Check if file is video file.
@@ -49,22 +54,12 @@ def is_VideoFile(filename):
     return False
 
 
-def write_videofile(filename, clip_start, clip_end, num):
+def split_videofile(filename, clip_start, clip_end, num):
     try:
         video = VideoFileClip("./resources/videos/origin/" + filename).subclip(clip_start, clip_end).resize((640, 360))
-
-        txt_clip = ( TextClip("snapjerk.com",fontsize=30,color='yellow')
-                .set_position(('right', 'bottom'))
-                .margin( bottom=20, right=20, opacity=0)
-                .set_duration(clip_end - clip_start) )
-
-        image_clip = ( ImageClip("./resources/images/logo.jpg")
-                    .set_position(('right', 'top'))
-                    .resize(0.1)
-                    .set_duration(clip_end - clip_start))
-        result = CompositeVideoClip([video, txt_clip, image_clip])
+        result = CompositeVideoClip([video])
         filename, file_extension = os.path.splitext(filename)
-        result.write_videofile("./resources/videos/result/" + filename + "_split_" + str(num) + file_extension, fps=25, threads=1)
+        result.write_videofile("./resources/videos/origin/" + filename + "_split_" + str(num) + file_extension, fps=25, threads=1)
     except IOError as e:
         print(e.strerror)
     finally:
@@ -78,10 +73,9 @@ def is_alive_anyProcess():
 
     return False
 
-
-def process_videos():
+def split_videos():
     global processes
-    processes = []
+    intervals = [15, 30, 60, 120]
     for root, dirs, files in os.walk("./resources/videos/origin"):
         for filename in files:
             if not is_VideoFile(filename):
@@ -89,18 +83,17 @@ def process_videos():
 
             video = VideoFileClip("./resources/videos/origin/" + filename)
             duration = video.duration
-            if duration < 480 or duration > 720:
-                continue
 
             clip_start = 0
             num = 1
 
             while clip_start < duration:
-                clip_end = clip_start + 180
+                interval = random.choice(intervals)
+                clip_end = clip_start + interval
                 if clip_end > duration:
                     clip_end = duration
                 pool_sema.acquire()
-                p = Process(target=write_videofile, args=(filename, clip_start, clip_end, num))
+                p = Process(target=split_videofile, args=(filename, clip_start, clip_end, num))
                 p.start()
                 processes.append(p)
                 clip_start = clip_end
@@ -110,6 +103,74 @@ def process_videos():
             while is_alive_anyProcess():
                 index = (index + 1) % 2
             os.remove("./resources/videos/origin/" + filename)
+
+
+def complinate_video():
+    global index
+    files = [f for f in listdir("./resources/videos/complinations") if isfile(join("./resources/videos/complinations", f))]
+    files.remove(".DS_Store")
+    clips = []
+    duration = 0
+    for filename in files:
+        clip = VideoFileClip("./resources/videos/complinations/" + filename)
+        duration =  duration + clip.duration
+        clips.append(clip)
+
+    video = concatenate_videoclips(clips)
+
+
+    txt_clip = ( TextClip("snapjerk.com",fontsize=30,color='yellow')
+                .set_position(('right', 'bottom'))
+                .margin( bottom=20, right=20, opacity=0)
+                .set_duration(duration) )
+
+    image_clip = ( ImageClip("./resources/images/logo.jpg")
+                .set_position(('right', 'top'))
+                .resize(0.1)
+                .set_duration(duration))
+
+    result = CompositeVideoClip([video, txt_clip, image_clip])
+    result.write_videofile("./resources/videos/result/snapvideo_" + str(index) + ".mp4", fps=25)
+    index = index + 1
+
+    for filename in files:
+        os.remove("./resources/videos/complinations/" + filename)
+
+
+def complinate_videos():
+    files = [f for f in listdir("./resources/videos/origin") if isfile(join("./resources/videos/origin", f))]
+    while True:
+        if not files:
+            break
+
+        total_time = 0
+        
+        while True:
+            selected_file = random.choice(files)
+        
+            if selected_file == ".DS_Store":
+                files.remove(selected_file)
+                continue
+        
+            video = VideoFileClip("./resources/videos/origin/" + selected_file)
+            total_time = total_time + video.duration
+        
+            if total_time > 720:
+                break
+        
+            shutil.copy2("./resources/videos/origin/" + selected_file, "./resources/videos/complinations")
+            files.remove(selected_file)
+            os.remove("./resources/videos/origin/" + selected_file)
+        
+            if not files:
+                break
+
+        complinate_video()
+
+        
+def process_videos():
+    split_videos()
+    complinate_videos()
 
 
 def main():
