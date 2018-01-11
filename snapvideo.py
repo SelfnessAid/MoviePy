@@ -133,6 +133,9 @@ def complinate_video():
     result.write_videofile("./resources/videos/result/snapvideo_" + str(index) + ".mp4", fps=25)
     index = index + 1
 
+    for clip in clips:
+        del clip.reader
+
     for filename in files:
         os.remove("./resources/videos/complinations/" + filename)
 
@@ -169,7 +172,7 @@ def complinate_videos():
 
         
 def process_videos():
-    split_videos()
+    # split_videos()
     complinate_videos()
 
 
